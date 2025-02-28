@@ -24,7 +24,7 @@
 
         // Constants
         const yetiThreshold = 2000;
-        let numObstacles; // Set dynamically in resizeCanvas
+        let numObstacles;
 
         // Game state and entities
         let player = {
@@ -36,7 +36,7 @@
             maxVelocityX: 5,
             accelerationX: 0.5
         };
-        let obstacles = []; // Start with no obstacles
+        let obstacles = [];
         let otherSkiers = [];
         let slalomGates = [];
         let yeti = null;
@@ -47,28 +47,30 @@
         let slalomScore = 0;
         let gameOver = false;
         let keys = {};
-        let startTime = Date.now(); // Track game start time
-        let obstaclesSpawned = false; // Flag to spawn obstacles after delay
+        let startTime = Date.now();
+        let obstaclesSpawned = false;
+        let obstacleSpawnCounter = 0;
+        const obstacleSpawnInterval = 10; // ~0.17s at 60fps
 
         // Full-screen canvas resizing
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            player.y = canvas.height * 0.25; // 3/4 of the way to the top
+            player.y = canvas.height * 0.25;
             player.x = canvas.width / 2;
             
-            // Dynamic number of obstacles based on screen width
-            numObstacles = Math.floor(canvas.width / 100); // 1 obstacle per 100px
-            numObstacles = Math.max(5, Math.min(20, numObstacles)); // Min 5, Max 20
+            numObstacles = Math.floor(canvas.width / 4); // Double trees: 1 per 4px
+            numObstacles = Math.max(5, Math.min(400, numObstacles)); // Min 5, Max 400
             resetEntities();
         }
         window.addEventListener('resize', resizeCanvas);
 
         // Initialize entities
         function resetEntities() {
-            obstacles = []; // Reset to empty; obstacles spawn after delay
-            obstaclesSpawned = false; // Reset spawn flag
-            startTime = Date.now(); // Reset start time
+            obstacles = [];
+            obstaclesSpawned = false;
+            obstacleSpawnCounter = 0;
+            startTime = Date.now();
             otherSkiers = [];
             slalomGates = Array(5).fill().map((_, i) => ({
                 x: canvas.width / 2 + (Math.random() - 0.5) * 200,
@@ -146,7 +148,6 @@
             const x = touch.clientX;
             const y = touch.clientY;
 
-            // Steering: Left or right half
             if (x < canvas.width / 2) {
                 keys['ArrowLeft'] = true;
                 keys['ArrowRight'] = false;
@@ -155,7 +156,6 @@
                 keys['ArrowLeft'] = false;
             }
 
-            // Boost: Bottom 25% of screen
             if (y > canvas.height * 0.75) {
                 keys['f'] = true;
             } else {
@@ -205,7 +205,7 @@
 
             // Speed boost
             if (keys['f'] && boostDuration <= 0) {
-                scrollSpeed = baseScrollSpeed * 2;
+                scrollSpeed = baseScrollSpeed * 3;
                 boostDuration = 100;
             }
             if (boostDuration > 0) {
@@ -213,42 +213,58 @@
                 if (boostDuration <= 0) scrollSpeed = baseScrollSpeed;
             }
 
-            // Spawn obstacles after 2 seconds
+            // Spawn obstacles after 2 seconds, incrementally
             if (!obstaclesSpawned && (Date.now() - startTime) > 2000) {
-                obstacles = Array(numObstacles).fill().map(() => ({
-                    x: Math.random() * canvas.width,
-                    y: player.y + Math.random() * (canvas.height - player.y),
-                    width: 30,
-                    height: 30
-                }));
                 obstaclesSpawned = true;
             }
+            if (obstaclesSpawned && obstacles.length < numObstacles && obstacleSpawnCounter % obstacleSpawnInterval === 0) {
+                obstacles.push({
+                    x: Math.random() * canvas.width,
+                    y: canvas.height + (obstacles.length * 50),
+                    width: 30,
+                    height: 30
+                });
+            }
+            obstacleSpawnCounter++;
 
-            // Scroll entities upward
+            // Scroll entities
             obstacles.forEach(o => o.y -= scrollSpeed);
-            otherSkiers.forEach(s => s.y -= scrollSpeed + 1);
+            otherSkiers.forEach(s => {
+                s.y += s.speed;
+                if (s.y > canvas.height + s.height) {
+                    s.y = s.isFast ? player.y - s.height : canvas.height;
+                    s.x = Math.random() * canvas.width;
+                    s.speed = s.isFast ? scrollSpeed * (1.1 + Math.random() * 0.4) : scrollSpeed * (0.5 + Math.random() * 0.4);
+                }
+            });
             slalomGates.forEach(g => g.y -= scrollSpeed);
             if (yeti) yeti.y -= scrollSpeed;
 
-            // Reset entities
+            // Reset obstacles
             obstacles.forEach(o => {
                 if (o.y < -o.height) {
-                    o.y = player.y + (canvas.height - player.y) + Math.random() * 100;
+                    o.y = canvas.height + (numObstacles - 1) * 50;
                     o.x = Math.random() * canvas.width;
                 }
             });
-            if (Math.random() < 0.01) {
+
+            // Spawn other skiers (halved frequency)
+            if (Math.random() < 0.005) { // Half of 0.01
+                const isFast = Math.random() < 0.5;
                 otherSkiers.push({
                     x: Math.random() * canvas.width,
-                    y: player.y + (canvas.height - player.y) + 50,
+                    y: isFast ? player.y - 50 : canvas.height,
                     width: 40,
-                    height: 40
+                    height: 40,
+                    speed: isFast ? scrollSpeed * (1.1 + Math.random() * 0.4) : scrollSpeed * (0.5 + Math.random() * 0.4),
+                    isFast: isFast
                 });
             }
-            otherSkiers = otherSkiers.filter(s => s.y > -s.height);
+            otherSkiers = otherSkiers.filter(s => s.y < canvas.height + s.height);
+
             slalomGates.forEach(g => {
                 if (g.y < -g.height) {
-                    g.y = player.y + (canvas.height - player.y) + 300;
+                    g.y = canvas.height;
                     g.x = canvas.width / 2 + (Math.random() - 0.5) * 200;
                     g.passed = false;
                 }
@@ -260,7 +276,7 @@
 
             // Yeti logic
             if (distance > yetiThreshold && !yeti) {
-                yeti = { x: player.x, y: player.y + (canvas.height - player.y) + 50, width: 60, height: 60, speed: 4 };
+                yeti = { x: player.x, y: canvas.height, width: 60, height: 60, speed: 4 };
             }
             if (yeti) {
                 if (player.x > yeti.x) yeti.x += yeti.speed / 2;
