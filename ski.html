@@ -8,6 +8,7 @@
         body {
             margin: 0;
             overflow: hidden;
+            touch-action: none; /* Prevents default touch behaviors like pinch-zoom */
         }
         canvas {
             display: block;
@@ -27,8 +28,8 @@
 
         // Game state and entities
         let player = {
-            x: 0, // Set in resizeCanvas
-            y: 0, // Set in resizeCanvas
+            x: 0,
+            y: 0,
             width: 50,
             height: 50,
             velocityX: 0,
@@ -45,13 +46,13 @@
         let distance = 0;
         let slalomScore = 0;
         let gameOver = false;
-        let keys = {};
+        let keys = {}; // Unified input state for keyboard and touch
 
         // Full-screen canvas resizing
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
-            player.y = canvas.height * 0.25; // 3/4 of the way to the top (25% from top)
+            player.y = canvas.height * 0.25; // 3/4 of the way to the top
             player.x = canvas.width / 2;
             resetEntities();
         }
@@ -75,7 +76,7 @@
             }));
             yeti = null;
         }
-        resizeCanvas(); // Call after all variables are defined
+        resizeCanvas();
 
         // SVG Images
         const skierSvg = 'data:image/svg+xml,' + encodeURIComponent(`
@@ -127,9 +128,45 @@
         const yetiImage = loadImage(yetiSvg);
         const otherSkierImage = loadImage(otherSkierSvg);
 
-        // Event listeners
+        // Input handling (keyboard and touch)
         window.addEventListener('keydown', e => keys[e.key] = true);
         window.addEventListener('keyup', e => keys[e.key] = false);
+
+        // Touch controls
+        canvas.addEventListener('touchstart', handleTouch);
+        canvas.addEventListener('touchmove', handleTouch);
+        canvas.addEventListener('touchend', handleTouchEnd);
+
+        function handleTouch(e) {
+            e.preventDefault(); // Prevent scrolling/zooming
+            const touch = e.touches[0];
+            const x = touch.clientX;
+            const y = touch.clientY;
+
+            // Steering: Left or right half
+            if (x < canvas.width / 2) {
+                keys['ArrowLeft'] = true;
+                keys['ArrowRight'] = false;
+            } else {
+                keys['ArrowRight'] = true;
+                keys['ArrowLeft'] = false;
+            }
+
+            // Boost: Bottom 25% of screen
+            if (y > canvas.height * 0.75) {
+                keys['f'] = true;
+            } else {
+                keys['f'] = false;
+            }
+        }
+
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            // Reset all keys when touch ends
+            keys['ArrowLeft'] = false;
+            keys['ArrowRight'] = false;
+            keys['f'] = false;
+        }
 
         // Collision detection
         function checkCollision(a, b) {
@@ -164,7 +201,7 @@
             player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
             player.velocityX *= 0.9;
 
-            // Speed boost with F
+            // Speed boost with F or bottom touch
             if (keys['f'] && boostDuration <= 0) {
                 scrollSpeed = baseScrollSpeed * 2;
                 boostDuration = 100;
@@ -285,12 +322,15 @@
             highScores.forEach((score, i) => {
                 ctx.fillText(`${i + 1}. ${Math.floor(score)}`, canvas.width / 2 - 50, canvas.height / 2 + i * 30);
             });
-            ctx.fillText('Press Enter to start a new game', canvas.width / 2 - 150, canvas.height / 2 + 150);
+            ctx.fillText('Press Enter or Tap to Start a New Game', canvas.width / 2 - 180, canvas.height / 2 + 150);
         }
 
-        // Restart
+        // Restart (updated for touch)
         window.addEventListener('keydown', e => {
             if (e.key === 'Enter' && gameOver) resetGame();
+        });
+        canvas.addEventListener('touchstart', e => {
+            if (gameOver) resetGame();
         });
 
         function resetGame() {
