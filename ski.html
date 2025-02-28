@@ -8,7 +8,7 @@
         body {
             margin: 0;
             overflow: hidden;
-            touch-action: none; /* Prevents default touch behaviors like pinch-zoom */
+            touch-action: none;
         }
         canvas {
             display: block;
@@ -23,8 +23,8 @@
         const ctx = canvas.getContext('2d');
 
         // Constants
-        const numObstacles = 20;
         const yetiThreshold = 2000;
+        let numObstacles; // Set dynamically in resizeCanvas
 
         // Game state and entities
         let player = {
@@ -36,7 +36,7 @@
             maxVelocityX: 5,
             accelerationX: 0.5
         };
-        let obstacles = [];
+        let obstacles = []; // Start with no obstacles
         let otherSkiers = [];
         let slalomGates = [];
         let yeti = null;
@@ -46,7 +46,9 @@
         let distance = 0;
         let slalomScore = 0;
         let gameOver = false;
-        let keys = {}; // Unified input state for keyboard and touch
+        let keys = {};
+        let startTime = Date.now(); // Track game start time
+        let obstaclesSpawned = false; // Flag to spawn obstacles after delay
 
         // Full-screen canvas resizing
         function resizeCanvas() {
@@ -54,18 +56,19 @@
             canvas.height = window.innerHeight;
             player.y = canvas.height * 0.25; // 3/4 of the way to the top
             player.x = canvas.width / 2;
+            
+            // Dynamic number of obstacles based on screen width
+            numObstacles = Math.floor(canvas.width / 100); // 1 obstacle per 100px
+            numObstacles = Math.max(5, Math.min(20, numObstacles)); // Min 5, Max 20
             resetEntities();
         }
         window.addEventListener('resize', resizeCanvas);
 
         // Initialize entities
         function resetEntities() {
-            obstacles = Array(numObstacles).fill().map(() => ({
-                x: Math.random() * canvas.width,
-                y: player.y + Math.random() * (canvas.height - player.y),
-                width: 30,
-                height: 30
-            }));
+            obstacles = []; // Reset to empty; obstacles spawn after delay
+            obstaclesSpawned = false; // Reset spawn flag
+            startTime = Date.now(); // Reset start time
             otherSkiers = [];
             slalomGates = Array(5).fill().map((_, i) => ({
                 x: canvas.width / 2 + (Math.random() - 0.5) * 200,
@@ -128,7 +131,7 @@
         const yetiImage = loadImage(yetiSvg);
         const otherSkierImage = loadImage(otherSkierSvg);
 
-        // Input handling (keyboard and touch)
+        // Input handling
         window.addEventListener('keydown', e => keys[e.key] = true);
         window.addEventListener('keyup', e => keys[e.key] = false);
 
@@ -138,7 +141,7 @@
         canvas.addEventListener('touchend', handleTouchEnd);
 
         function handleTouch(e) {
-            e.preventDefault(); // Prevent scrolling/zooming
+            e.preventDefault();
             const touch = e.touches[0];
             const x = touch.clientX;
             const y = touch.clientY;
@@ -162,7 +165,6 @@
 
         function handleTouchEnd(e) {
             e.preventDefault();
-            // Reset all keys when touch ends
             keys['ArrowLeft'] = false;
             keys['ArrowRight'] = false;
             keys['f'] = false;
@@ -201,7 +203,7 @@
             player.x = Math.max(0, Math.min(canvas.width - player.width, player.x));
             player.velocityX *= 0.9;
 
-            // Speed boost with F or bottom touch
+            // Speed boost
             if (keys['f'] && boostDuration <= 0) {
                 scrollSpeed = baseScrollSpeed * 2;
                 boostDuration = 100;
@@ -209,6 +211,17 @@
             if (boostDuration > 0) {
                 boostDuration--;
                 if (boostDuration <= 0) scrollSpeed = baseScrollSpeed;
+            }
+
+            // Spawn obstacles after 2 seconds
+            if (!obstaclesSpawned && (Date.now() - startTime) > 2000) {
+                obstacles = Array(numObstacles).fill().map(() => ({
+                    x: Math.random() * canvas.width,
+                    y: player.y + Math.random() * (canvas.height - player.y),
+                    width: 30,
+                    height: 30
+                }));
+                obstaclesSpawned = true;
             }
 
             // Scroll entities upward
@@ -325,7 +338,7 @@
             ctx.fillText('Press Enter or Tap to Start a New Game', canvas.width / 2 - 180, canvas.height / 2 + 150);
         }
 
-        // Restart (updated for touch)
+        // Restart
         window.addEventListener('keydown', e => {
             if (e.key === 'Enter' && gameOver) resetGame();
         });
